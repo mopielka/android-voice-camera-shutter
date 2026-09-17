@@ -78,7 +78,7 @@ class ShutterAccessibilityService : AccessibilityService() {
         if (isCamera && !enabled && packageName != lastSeenPackage) {
             DiagnosticLog.log("Aparat otwarty, ale nasłuch jest wyłączony")
         }
-        lastSeenPackage = packageName.takeIf { isCamera }
+        lastSeenPackage = packageName
 
         if (enabled && isCamera) enterCamera(packageName) else leaveCamera()
     }
@@ -122,11 +122,28 @@ class ShutterAccessibilityService : AccessibilityService() {
     }
 
     private fun stopNow() {
+        val packageName = activeCameraPackage ?: return
+
+        // A foreign window on top does not mean the camera is gone: MagicOS flashes the
+        // launcher, systemui and the search bar over it constantly. The camera's window
+        // still exists in the window list, and that — not what happens to be frontmost —
+        // is what decides whether the microphone is still wanted.
+        if (isWindowPresent(packageName)) {
+            mainHandler.postDelayed(stopListening, LINGER_MS)
+            return
+        }
+
         mainHandler.removeCallbacks(pressShutterLater)
-        if (activeCameraPackage == null) return
         DiagnosticLog.log("Aparat zamknięty — zatrzymuję nasłuch")
         activeCameraPackage = null
         VoiceShutterService.stop(this)
+    }
+
+    private fun isWindowPresent(packageName: String): Boolean {
+        if (rootInActiveWindow?.packageName == packageName) return true
+        return runCatching {
+            windows.any { it.root?.packageName == packageName }
+        }.getOrDefault(false)
     }
 
     /**
@@ -139,7 +156,7 @@ class ShutterAccessibilityService : AccessibilityService() {
     fun triggerShutter(): Boolean {
         val now = SystemClock.elapsedRealtime()
         if (now - lastTriggerAt < DEBOUNCE_MS) {
-            DiagnosticLog.log("Wyzwolenie pominięte (debounce)")
+            DiagnosticLog.log("Wyzwolenie pominięte (debounce, ${now - lastTriggerAt} ms od ostatniego)")
             return false
         }
         lastTriggerAt = now
@@ -210,7 +227,13 @@ class ShutterAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val DEBOUNCE_MS = 2_000L
+        /**
+         * Only wide enough to swallow the tail of one utterance echoing into the next
+         * recognition session. Duplicate hits from a single phrase are already prevented
+         * by rebuilding that session, and a longer window silently ate deliberate
+         * repeats spoken about two seconds apart.
+         */
+        private const val DEBOUNCE_MS = 800L
         private const val LINGER_MS = 4_000L
         private const val TAP_DURATION_MS = 60L
 

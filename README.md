@@ -33,6 +33,26 @@ Natywny aparat robi zdjęcie
 Ta sama usługa dostępności pełni dwie role: wykrywa, że aparat wyszedł na pierwszy plan
 (i wtedy uruchamia nasłuch), oraz naciska spust.
 
+### Kiedy nasłuch się wyłącza
+
+To okazało się najtrudniejszą częścią. MagicOS bez przerwy przykrywa aparat własnymi oknami
+(`launcher`, `systemui`, pasek wyszukiwania) na ułamki sekundy. Jeśli potraktować to jako
+„użytkownik wyszedł z aparatu", mikrofon gaśnie po kilku sekundach, mimo że aparat jest na
+ekranie — objawia się to tym, że pierwsze 2-3 zdjęcia działają, a potem zapada cisza aż do
+ponownego otwarcia aparatu.
+
+Dlatego nasłuch nie kończy się na podstawie tego, co jest na wierzchu, tylko sprawdza,
+**czy okno aparatu nadal istnieje na liście okien**. `CameraManager.AvailabilityCallback`
+wygląda na właściwsze narzędzie, ale na tym telefonie raportuje kamerę jako wolną nawet
+w trakcie robienia zdjęcia — nie nadaje się.
+
+### Po co wyciszenie po zdjęciu
+
+Przez sekundę po trafieniu strumień audio jest czytany, ale ignorowany. Bez tego końcówka
+wypowiedzi (a na telefonach z niewyciszoną migawką także jej dźwięk) wraca do mikrofonu
+i wyzwala serię 2-3 zdjęć. Wyciszenie działa na poziomie dźwięku, nie jako blokada
+wyzwalania — blokada z długim oknem zjadała świadome, kolejne polecenia.
+
 ### Dlaczego nie „wyślij keypress”
 
 Pilot Bluetooth do statywu wysyła zwykły `KEYCODE_VOLUME_UP`, więc naturalny pomysł jest taki,
@@ -123,8 +143,12 @@ adb shell run-as dev.opielka.voiceshutter cat files/voice-shutter.log
 ```
 
 To działa tylko dla buildu debug (`run-as` wymaga `debuggable`). Dziennik jest ograniczony do 64 KB
-i loguje wyłącznie zdarzenia aparatu i wyzwolenia — nie każdą zmianę okna, bo przy takim szumie
-bufor kasuje to, czego się właśnie szuka.
+i loguje zdarzenia aparatu, wyzwolenia, rozpoznane frazy (`Słyszę: "..."`) oraz co jakiś czas poziom
+sygnału z mikrofonu — nie każdą zmianę okna, bo przy takim szumie bufor kasuje to, czego się szuka.
+
+`Słyszę:` i poziom sygnału są tu nie bez powodu: bez nich awaria rozpoznawania jest nie do
+odróżnienia od martwego mikrofonu i od zwykłego nietrafienia w hasło. Trzy różne przyczyny,
+trzy różne naprawy.
 
 Sprawdzenie samej ścieżki dostępności, bez udziału mikrofonu (build debug):
 
