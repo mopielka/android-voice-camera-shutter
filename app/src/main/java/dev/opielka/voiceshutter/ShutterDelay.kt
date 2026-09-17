@@ -6,8 +6,8 @@ package dev.opielka.voiceshutter
  * A short delay is wanted, not tolerated: firing the instant the word is recognised
  * catches the subject mid-vowel, still mouthing the trigger word.
  *
- * The steps are deliberately uneven, so the slider works on positions and this maps
- * them to milliseconds.
+ * The slider is a time axis rather than a row of equal steps, so 2→3 s occupies twice
+ * the distance of 0→0.5 s. [fractionOf] places both the thumb and the tick labels.
  */
 object ShutterDelay {
 
@@ -15,20 +15,28 @@ object ShutterDelay {
 
     val DEFAULT_MS = 500L
 
-    val steps: Int = OPTIONS_MS.size - 2
+    val MAX_MS = OPTIONS_MS.max()
 
-    fun indexOf(delayMs: Long): Int =
-        OPTIONS_MS.indexOf(delayMs).takeIf { it >= 0 } ?: OPTIONS_MS.indexOf(DEFAULT_MS)
+    /** Position along the axis, 0f at the start and 1f at [MAX_MS]. */
+    fun fractionOf(delayMs: Long): Float =
+        (delayMs.toFloat() / MAX_MS).coerceIn(0f, 1f)
 
-    fun atIndex(index: Int): Long = OPTIONS_MS[index.coerceIn(OPTIONS_MS.indices)]
-
-    /** Nearest supported value, so a stored delay from an older build still resolves. */
+    /** Nearest supported value — snaps a drag, and resolves a value stored by an older build. */
     fun sanitise(delayMs: Long): Long = OPTIONS_MS.minBy { kotlin.math.abs(it - delayMs) }
+
+    fun fromSeconds(seconds: Float): Long = sanitise((seconds * 1000).toLong())
 
     fun label(delayMs: Long): String = when (delayMs) {
         0L -> "natychmiast"
         500L -> "0,5 s (zalecane)"
         1_000L -> "1 s"
         else -> "${delayMs / 1000} s"
+    }
+
+    /** Tick label under the slider — just the number, the unit is in the heading. */
+    fun tickLabel(delayMs: Long): String = when (delayMs) {
+        0L -> "0"
+        500L -> "0,5"
+        else -> "${delayMs / 1000}"
     }
 }

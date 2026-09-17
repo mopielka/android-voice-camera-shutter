@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -165,15 +167,32 @@ private fun DelayCard(prefs: Prefs) {
                 Text(ShutterDelay.label(storedDelay), style = MaterialTheme.typography.bodyMedium)
             }
 
+            // A plain range, not `steps`: equal steps would make 2->3 s look the same
+            // distance as 0->0.5 s. The thumb snaps because its value comes from the
+            // stored (already snapped) delay.
             Slider(
-                value = ShutterDelay.indexOf(storedDelay).toFloat(),
-                onValueChange = { position ->
-                    val delay = ShutterDelay.atIndex(position.toInt())
+                value = storedDelay / 1000f,
+                onValueChange = { seconds ->
+                    val delay = ShutterDelay.fromSeconds(seconds)
                     if (delay != storedDelay) scope.launch { prefs.setShutterDelayMs(delay) }
                 },
-                valueRange = 0f..(ShutterDelay.OPTIONS_MS.size - 1).toFloat(),
-                steps = ShutterDelay.steps,
+                valueRange = 0f..(ShutterDelay.MAX_MS / 1000f),
             )
+
+            Box(modifier = Modifier.fillMaxWidth()) {
+                ShutterDelay.OPTIONS_MS.forEach { option ->
+                    Text(
+                        text = ShutterDelay.tickLabel(option),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(
+                            BiasAlignment(
+                                horizontalBias = ShutterDelay.fractionOf(option) * 2f - 1f,
+                                verticalBias = 0f,
+                            ),
+                        ),
+                    )
+                }
+            }
 
             Text(
                 "Czas między rozpoznaniem hasła a zdjęciem. Bez opóźnienia aparat łapie " +

@@ -58,6 +58,8 @@ więc podmiana na inny dotyka jednego miejsca konstrukcji w `VoiceShutterService
 ## Opóźnienie migawki
 
 Suwakiem w aplikacji: `natychmiast`, `0,5 s` (domyślne i zalecane), `1 s`, `2 s`, `3 s`.
+Suwak jest osią czasu, nie rzędem równych kroków — odstęp `2`→`3` s jest sześć razy szerszy
+niż `0`→`0,5` s, a przeciągnięcie przyciąga do najbliższej wartości.
 
 Opóźnienie jest tu celowe, nie tolerowane: bez niego migawka wyzwala się w momencie, gdy
 jeszcze wymawiasz hasło, i łapie otwarte usta. Jeśli zamkniesz aparat w trakcie odliczania,

@@ -6,37 +6,36 @@ import org.junit.Test
 class ShutterDelayTest {
 
     @Test
-    fun `slider positions map to the uneven steps`() {
-        assertEquals(listOf(0L, 500L, 1_000L, 2_000L, 3_000L), ShutterDelay.OPTIONS_MS)
-        assertEquals(0L, ShutterDelay.atIndex(0))
-        assertEquals(500L, ShutterDelay.atIndex(1))
-        assertEquals(3_000L, ShutterDelay.atIndex(4))
+    fun `the axis is time, so gaps are proportional not equal`() {
+        assertEquals(0f, ShutterDelay.fractionOf(0L), TOLERANCE)
+        assertEquals(1f / 6, ShutterDelay.fractionOf(500L), TOLERANCE)
+        assertEquals(1f / 3, ShutterDelay.fractionOf(1_000L), TOLERANCE)
+        assertEquals(2f / 3, ShutterDelay.fractionOf(2_000L), TOLERANCE)
+        assertEquals(1f, ShutterDelay.fractionOf(3_000L), TOLERANCE)
     }
 
     @Test
-    fun `index round-trips`() {
-        ShutterDelay.OPTIONS_MS.forEach { delay ->
-            assertEquals(delay, ShutterDelay.atIndex(ShutterDelay.indexOf(delay)))
-        }
+    fun `a drag snaps to the nearest supported value`() {
+        assertEquals(0L, ShutterDelay.fromSeconds(0.2f))
+        assertEquals(500L, ShutterDelay.fromSeconds(0.4f))
+        assertEquals(1_000L, ShutterDelay.fromSeconds(1.1f))
+        assertEquals(2_000L, ShutterDelay.fromSeconds(1.6f))
+        assertEquals(3_000L, ShutterDelay.fromSeconds(2.9f))
     }
 
     @Test
-    fun `out of range positions are clamped rather than crashing`() {
-        assertEquals(0L, ShutterDelay.atIndex(-5))
-        assertEquals(3_000L, ShutterDelay.atIndex(99))
+    fun `values outside the axis are clamped`() {
+        assertEquals(0f, ShutterDelay.fractionOf(-100L), TOLERANCE)
+        assertEquals(1f, ShutterDelay.fractionOf(99_000L), TOLERANCE)
+        assertEquals(3_000L, ShutterDelay.fromSeconds(10f))
+        assertEquals(0L, ShutterDelay.fromSeconds(-1f))
     }
 
     @Test
-    fun `an unknown stored value falls back to the default`() {
-        assertEquals(ShutterDelay.indexOf(ShutterDelay.DEFAULT_MS), ShutterDelay.indexOf(1_234L))
-    }
-
-    @Test
-    fun `sanitise snaps to the nearest supported value`() {
+    fun `sanitise snaps an unsupported stored value`() {
         assertEquals(500L, ShutterDelay.sanitise(400L))
         assertEquals(1_000L, ShutterDelay.sanitise(1_100L))
         assertEquals(3_000L, ShutterDelay.sanitise(10_000L))
-        assertEquals(0L, ShutterDelay.sanitise(-1L))
     }
 
     @Test
@@ -46,7 +45,11 @@ class ShutterDelayTest {
     }
 
     @Test
-    fun `slider exposes one stop per option`() {
-        assertEquals(ShutterDelay.OPTIONS_MS.size, ShutterDelay.steps + 2)
+    fun `tick labels are bare numbers`() {
+        assertEquals(listOf("0", "0,5", "1", "2", "3"), ShutterDelay.OPTIONS_MS.map(ShutterDelay::tickLabel))
+    }
+
+    private companion object {
+        const val TOLERANCE = 0.0001f
     }
 }
