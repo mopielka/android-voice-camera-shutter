@@ -9,13 +9,20 @@ portret). Własny aparat oparty o CameraX byłby prostszy, ale dawałby wyraźni
 
 Mikrofon działa **tylko wtedy, gdy aparat jest na pierwszym planie** — nie przez całą dobę.
 
+## Hasła wyzwalające
+
+Domyślnie `smile`. Listę zmienisz w aplikacji — hasła oddzielone przecinkami, do 1000 znaków,
+np. `smile, cheese, take a photo`. Dozwolone są litery, spacje i apostrofy; dopasowanie obejmuje
+całe frazy, więc `smile` nie odpali się na `smiled`, a `take a photo` działa jako jedno hasło.
+Zmiana listy restartuje sam silnik rozpoznawania — usługa i model zostają w pamięci.
+
 ## Jak to działa
 
 ```
 Ty: „smile”
   ↓
 VoiceShutterService  (foreground service, mikrofon)
-  ↓  Vosk ze słownikiem ograniczonym do ["smile", "[unk]"]
+  ↓  Vosk ze słownikiem ograniczonym do skonfigurowanych haseł + ["[unk]"]
 ShutterAccessibilityService
   ↓  1. findAccessibilityNodeInfosByViewId(zapamiętane id)
   ↓  2. przeszukanie drzewa po content-description
@@ -42,8 +49,8 @@ Porcupine jest technicznie lepszym silnikiem wake-word, ale wymaga konta, klucza
 **Aplikacja nie ma uprawnienia `INTERNET` w ogóle** — coś, co słucha mikrofonu i czyta drzewo UI
 innych aplikacji, nie powinno móc niczego wysłać na zewnątrz.
 
-Vosk to pełny silnik rozpoznawania mowy, ale ograniczenie jego słownika do `["smile", "[unk]"]`
-zamienia go w praktyce w detektor wake-word — może zwrócić tylko „smile” albo „nieznane”.
+Vosk to pełny silnik rozpoznawania mowy, ale ograniczenie jego gramatyki do skonfigurowanych haseł
+zamienia go w praktyce w detektor wake-word — może zwrócić tylko jedno z nich albo „nieznane”.
 
 Silnik siedzi za interfejsem [`WakeWordDetector`](app/src/main/java/dev/opielka/voiceshutter/WakeWordDetector.kt),
 więc podmiana na inny dotyka jednego miejsca konstrukcji w `VoiceShutterService`.
@@ -135,4 +142,6 @@ Skrypt zrzuca drzewo UI i wypisuje kandydatów na spust.
   przejmuje mikrofon na wyłączność.
 - Praca z **zablokowanego ekranu** jest niepewna — usługa dostępności może nie widzieć okna
   nad lockscreenem.
-- Słowo `„smile”` jest na sztywno (`VoskDetector.keyword`).
+- Hasła muszą być **angielskie** — dołączony model to `vosk-model-small-en-us`. Vosk przyjmie
+  słowo, którego nie ma w swoim słowniku, i po prostu nigdy go nie rozpozna, bez żadnego
+  ostrzeżenia, więc każde nowe hasło trzeba sprawdzić w praktyce.
