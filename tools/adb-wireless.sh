@@ -25,6 +25,15 @@ pair() {
 }
 
 connect() {
+    # adb auto-connects paired devices over mDNS on its own. Calling `adb connect` on
+    # top of that registers the same phone twice and every later command then fails
+    # with "more than one device/emulator", so bail out when it is already there.
+    if "${ADB}" devices | grep -q "_adb-tls-connect._tcp[[:space:]]*device"; then
+        echo "Już połączone przez mDNS."
+        "${ADB}" devices -l
+        return
+    fi
+
     # adb advertises paired devices over mDNS; this is the port that changes.
     local svc
     svc="$("${ADB}" mdns services 2>/dev/null | awk '/_adb-tls-connect/ {print $3; exit}')"

@@ -69,14 +69,13 @@ class ShutterAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         if (packageName == this.packageName) return
 
-        if (packageName != lastSeenPackage) {
-            lastSeenPackage = packageName
-            DiagnosticLog.log(
-                "Okno: $packageName (enabled=$enabled, aparat=${packageName in cameraPackages})",
-            )
+        val isCamera = packageName in cameraPackages
+        if (isCamera && !enabled && packageName != lastSeenPackage) {
+            DiagnosticLog.log("Aparat otwarty, ale nasłuch jest wyłączony")
         }
+        lastSeenPackage = packageName.takeIf { isCamera }
 
-        if (enabled && packageName in cameraPackages) enterCamera(packageName) else leaveCamera()
+        if (enabled && isCamera) enterCamera(packageName) else leaveCamera()
     }
 
     override fun onInterrupt() = Unit

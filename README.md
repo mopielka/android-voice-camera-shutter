@@ -83,11 +83,31 @@ publicznego API. Trzeba raz kliknąć ręcznie:
 
 Bez tego „smile” działa po instalacji, a przestaje po kilku godzinach albo po restarcie.
 
-## Diagnostyka
+## Połączenie bezprzewodowe
+
+Telefon i Mac w tej samej sieci Wi-Fi. Parowanie raz:
+
+> Ustawienia → Opcje programisty → Debugowanie bezprzewodowe → „Sparuj urządzenie kodem parowania"
 
 ```bash
-adb logcat -s VoiceShutter
+./tools/adb-wireless.sh pair <IP:PORT> <6-cyfrowy-kod>
 ```
+
+Potem w każdej kolejnej sesji wystarczy `./tools/adb-wireless.sh`. Parowanie przeżywa restart telefonu;
+zmienia się natomiast port połączenia, dlatego skrypt wyszukuje go przez mDNS zamiast pytać o niego użytkownika.
+
+## Diagnostyka
+
+**Logcat na tym telefonie nie działa.** MagicOS po cichu zjada wyjście logcat — nie przechodzi nawet
+`adb shell log -t TAG cokolwiek`. Dlatego aplikacja pisze własny dziennik do pliku:
+
+```bash
+adb shell run-as dev.opielka.voiceshutter cat files/voice-shutter.log
+```
+
+To działa tylko dla buildu debug (`run-as` wymaga `debuggable`). Dziennik jest ograniczony do 64 KB
+i loguje wyłącznie zdarzenia aparatu i wyzwolenia — nie każdą zmianę okna, bo przy takim szumie
+bufor kasuje to, czego się właśnie szuka.
 
 Sprawdzenie samej ścieżki dostępności, bez udziału mikrofonu (build debug):
 
