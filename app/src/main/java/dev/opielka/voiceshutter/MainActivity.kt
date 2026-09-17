@@ -20,11 +20,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +105,8 @@ private fun SetupScreen() {
             }
         }
 
+        KeywordsCard(prefs)
+
         RequirementCard(
             title = "Usługa dostępności",
             satisfied = state.accessibilityEnabled,
@@ -133,6 +138,76 @@ private fun SetupScreen() {
                 "Voice Shutter → Zarządzaj ręcznie (wszystkie trzy przełączniki).",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun KeywordsCard(prefs: Prefs) {
+    val scope = rememberCoroutineScope()
+    val stored by prefs.keywordsRaw.collectAsState(initial = KeywordList.DEFAULT)
+    var draft by remember { mutableStateOf(stored) }
+    LaunchedEffect(stored) { draft = stored }
+
+    val parsed = KeywordList.parse(draft)
+    val rejected = KeywordList.rejected(draft)
+    val dirty = draft != stored
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Hasła wyzwalające", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Oddziel przecinkami. Model rozumie tylko angielski.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { if (!KeywordList.isTooLong(it)) draft = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(KeywordList.DEFAULT) },
+                supportingText = { Text("${draft.length} / ${KeywordList.MAX_LENGTH}") },
+                isError = parsed.isEmpty(),
+            )
+
+            Text(
+                text = if (parsed.isEmpty()) {
+                    "Brak poprawnych haseł — nasłuch użyje „${KeywordList.DEFAULT}”."
+                } else {
+                    "Aktywne: ${parsed.joinToString(", ")}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            if (rejected.isNotEmpty()) {
+                Text(
+                    "Pominięte (dozwolone są tylko litery, spacje i apostrofy): " +
+                        rejected.joinToString(", "),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Text(
+                "Rzadkie lub nieanglojęzyczne słowa mogą nie zadziałać — model przyjmie je " +
+                    "bez ostrzeżenia, ale nigdy ich nie rozpozna. Sprawdź każde nowe hasło.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { scope.launch { prefs.setKeywords(draft) } },
+                    enabled = dirty,
+                ) { Text("Zapisz") }
+
+                if (dirty) {
+                    TextButton(onClick = { draft = stored }) { Text("Cofnij") }
+                }
+            }
+        }
     }
 }
 

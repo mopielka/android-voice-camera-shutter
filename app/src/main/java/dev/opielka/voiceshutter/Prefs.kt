@@ -18,6 +18,11 @@ class Prefs(private val context: Context) {
     val cameraPackageOverrides: Flow<Set<String>> =
         context.dataStore.data.map { it[CAMERA_PACKAGES] ?: emptySet() }
 
+    /** Raw, exactly as typed — parsing belongs to [KeywordList], not to storage. */
+    val keywordsRaw: Flow<String> =
+        context.dataStore.data.map { it[KEYWORDS] ?: KeywordList.DEFAULT }
+
+
     suspend fun setEnabled(value: Boolean) {
         context.dataStore.edit { it[ENABLED] = value }
     }
@@ -25,6 +30,11 @@ class Prefs(private val context: Context) {
     suspend fun setCameraPackageOverrides(packages: Set<String>) {
         context.dataStore.edit { it[CAMERA_PACKAGES] = packages }
     }
+
+    suspend fun setKeywords(raw: String) {
+        context.dataStore.edit { it[KEYWORDS] = raw.take(KeywordList.MAX_LENGTH) }
+    }
+
 
     fun shutterViewId(packageName: String): Flow<String?> =
         context.dataStore.data.map { it[shutterViewIdKey(packageName)] }
@@ -45,6 +55,7 @@ class Prefs(private val context: Context) {
     private companion object {
         val ENABLED = booleanPreferencesKey("enabled")
         val CAMERA_PACKAGES = stringSetPreferencesKey("camera_packages")
+        val KEYWORDS = stringPreferencesKey("keywords")
 
         fun shutterViewIdKey(packageName: String) = stringPreferencesKey("shutter_id_$packageName")
     }

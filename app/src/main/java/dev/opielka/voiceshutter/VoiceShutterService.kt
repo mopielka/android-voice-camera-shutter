@@ -9,6 +9,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * Owns the microphone for as long as a camera app is in the foreground.
@@ -18,7 +26,10 @@ import android.os.IBinder
  */
 class VoiceShutterService : Service() {
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val prefs by lazy { Prefs(applicationContext) }
     private var detector: WakeWordDetector? = null
+    private var listening = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -41,18 +52,32 @@ class VoiceShutterService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
         )
 
-        if (detector == null) {
-            detector = VoskDetector(applicationContext).also { engine ->
-                engine.start { ShutterAccessibilityService.instance?.triggerShutter() }
-            }
+        if (!listening) {
+            listening = true
+            scope.launch { followKeywords() }
         }
 
         return START_NOT_STICKY
     }
 
+    /** Restarts the engine when the user edits the phrase list, without bouncing the service. */
+    private suspend fun followKeywords() {
+        prefs.keywordsRaw
+            .map(KeywordList::parseOrDefault)
+            .distinctUntilChanged()
+            .collectLatest { phrases ->
+                detector?.stop()
+                detector = VoskDetector(applicationContext, phrases).also { engine ->
+                    engine.start { ShutterAccessibilityService.instance?.triggerShutter() }
+                }
+            }
+    }
+
     override fun onDestroy() {
+        scope.cancel()
         detector?.stop()
         detector = null
+        listening = false
         super.onDestroy()
     }
 
