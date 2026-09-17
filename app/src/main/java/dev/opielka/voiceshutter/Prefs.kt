@@ -3,6 +3,7 @@ package dev.opielka.voiceshutter
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -18,6 +19,10 @@ class Prefs(private val context: Context) {
     val cameraPackageOverrides: Flow<Set<String>> =
         context.dataStore.data.map { it[CAMERA_PACKAGES] ?: emptySet() }
 
+    val shutterDelayMs: Flow<Long> = context.dataStore.data.map {
+        ShutterDelay.sanitise(it[SHUTTER_DELAY_MS] ?: ShutterDelay.DEFAULT_MS)
+    }
+
     /** Raw, exactly as typed — parsing belongs to [KeywordList], not to storage. */
     val keywordsRaw: Flow<String> =
         context.dataStore.data.map { it[KEYWORDS] ?: KeywordList.DEFAULT }
@@ -29,6 +34,10 @@ class Prefs(private val context: Context) {
 
     suspend fun setCameraPackageOverrides(packages: Set<String>) {
         context.dataStore.edit { it[CAMERA_PACKAGES] = packages }
+    }
+
+    suspend fun setShutterDelayMs(delayMs: Long) {
+        context.dataStore.edit { it[SHUTTER_DELAY_MS] = ShutterDelay.sanitise(delayMs) }
     }
 
     suspend fun setKeywords(raw: String) {
@@ -56,6 +65,7 @@ class Prefs(private val context: Context) {
         val ENABLED = booleanPreferencesKey("enabled")
         val CAMERA_PACKAGES = stringSetPreferencesKey("camera_packages")
         val KEYWORDS = stringPreferencesKey("keywords")
+        val SHUTTER_DELAY_MS = longPreferencesKey("shutter_delay_ms")
 
         fun shutterViewIdKey(packageName: String) = stringPreferencesKey("shutter_id_$packageName")
     }

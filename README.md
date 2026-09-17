@@ -55,6 +55,14 @@ zamienia go w praktyce w detektor wake-word — może zwrócić tylko jedno z ni
 Silnik siedzi za interfejsem [`WakeWordDetector`](app/src/main/java/dev/opielka/voiceshutter/WakeWordDetector.kt),
 więc podmiana na inny dotyka jednego miejsca konstrukcji w `VoiceShutterService`.
 
+## Opóźnienie migawki
+
+Suwakiem w aplikacji: `natychmiast`, `0,5 s` (domyślne i zalecane), `1 s`, `2 s`, `3 s`.
+
+Opóźnienie jest tu celowe, nie tolerowane: bez niego migawka wyzwala się w momencie, gdy
+jeszcze wymawiasz hasło, i łapie otwarte usta. Jeśli zamkniesz aparat w trakcie odliczania,
+zdjęcie zostaje anulowane.
+
 ## Budowanie
 
 Wymagane: JDK 17 i Android SDK (platform 35, build-tools 35).

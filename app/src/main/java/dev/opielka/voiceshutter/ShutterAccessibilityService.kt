@@ -36,10 +36,12 @@ class ShutterAccessibilityService : AccessibilityService() {
     @Volatile private var rememberedIds: Map<String, String> = emptyMap()
     @Volatile private var activeCameraPackage: String? = null
     @Volatile private var lastTriggerAt = 0L
+    @Volatile private var shutterDelayMs = ShutterDelay.DEFAULT_MS
     @Volatile private var lastSeenPackage: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stopListening = Runnable { stopNow() }
+    private val pressShutterLater = Runnable { pressShutter() }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -55,6 +57,9 @@ class ShutterAccessibilityService : AccessibilityService() {
                 DiagnosticLog.log("Nasłuch włączony: $value")
                 if (!value) mainHandler.post { stopNow() }
             }
+        }
+        scope.launch {
+            prefs.shutterDelayMs.collectLatest { shutterDelayMs = it }
         }
         scope.launch {
             prefs.cameraPackageOverrides.collectLatest { overrides ->
@@ -82,6 +87,7 @@ class ShutterAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(stopListening)
+        mainHandler.removeCallbacks(pressShutterLater)
         stopNow()
         instance = null
         scope.cancel()
@@ -116,6 +122,7 @@ class ShutterAccessibilityService : AccessibilityService() {
     }
 
     private fun stopNow() {
+        mainHandler.removeCallbacks(pressShutterLater)
         if (activeCameraPackage == null) return
         DiagnosticLog.log("Aparat zamknięty — zatrzymuję nasłuch")
         activeCameraPackage = null
@@ -125,6 +132,9 @@ class ShutterAccessibilityService : AccessibilityService() {
     /**
      * Debouncing lives here rather than in the caller so every trigger path — the wake
      * word, the debug broadcast, anything added later — is protected from firing a burst.
+     *
+     * Returns whether a shot was scheduled, not whether it succeeded: the press itself
+     * happens after the configured delay.
      */
     fun triggerShutter(): Boolean {
         val now = SystemClock.elapsedRealtime()
@@ -134,6 +144,20 @@ class ShutterAccessibilityService : AccessibilityService() {
         }
         lastTriggerAt = now
 
+        val delay = shutterDelayMs
+        if (delay <= 0L) return pressShutter()
+
+        DiagnosticLog.log("Zdjęcie za ${delay} ms")
+        mainHandler.postDelayed(pressShutterLater, delay)
+        return true
+    }
+
+    /**
+     * Fires after the delay, by which point the camera may be gone — the user can close
+     * it while the countdown runs, and pressing into whatever replaced it would be worse
+     * than missing the shot.
+     */
+    private fun pressShutter(): Boolean {
         val packageName = activeCameraPackage ?: run {
             DiagnosticLog.log("Brak aparatu na pierwszym planie")
             return false

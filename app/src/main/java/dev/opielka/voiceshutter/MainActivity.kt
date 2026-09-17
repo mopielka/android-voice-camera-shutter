@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -107,6 +108,8 @@ private fun SetupScreen() {
 
         KeywordsCard(prefs)
 
+        DelayCard(prefs)
+
         RequirementCard(
             title = "Usługa dostępności",
             satisfied = state.accessibilityEnabled,
@@ -138,6 +141,46 @@ private fun SetupScreen() {
                 "Voice Shutter → Zarządzaj ręcznie (wszystkie trzy przełączniki).",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun DelayCard(prefs: Prefs) {
+    val scope = rememberCoroutineScope()
+    val storedDelay by prefs.shutterDelayMs.collectAsState(initial = ShutterDelay.DEFAULT_MS)
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Opóźnienie migawki", style = MaterialTheme.typography.titleMedium)
+                Text(ShutterDelay.label(storedDelay), style = MaterialTheme.typography.bodyMedium)
+            }
+
+            Slider(
+                value = ShutterDelay.indexOf(storedDelay).toFloat(),
+                onValueChange = { position ->
+                    val delay = ShutterDelay.atIndex(position.toInt())
+                    if (delay != storedDelay) scope.launch { prefs.setShutterDelayMs(delay) }
+                },
+                valueRange = 0f..(ShutterDelay.OPTIONS_MS.size - 1).toFloat(),
+                steps = ShutterDelay.steps,
+            )
+
+            Text(
+                "Czas między rozpoznaniem hasła a zdjęciem. Bez opóźnienia aparat łapie " +
+                    "moment, w którym jeszcze wymawiasz słowo — stąd zalecane 0,5 s.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 
