@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Voice Shutter</string>
+    <string name="tile_label">Voice Shutter</string>
+    <string name="accessibility_service_label">Voice Shutter</string>
+    <string name="accessibility_service_description">Wykrywa otwarcie aplikacji aparatu i wyzwala migawkę po usłyszeniu słowa „smile”.</string>
+    <string name="notification_channel_name">Nasłuch głosowy</string>
+    <string name="notification_title">Nasłuchuję słowa „smile”</string>
+    <string name="notification_stop">Zatrzymaj</string>
+</resources>

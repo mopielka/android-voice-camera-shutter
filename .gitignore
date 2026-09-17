@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.keystore
+
+# Model Vosk (~40 MB) pobierany przez tools/fetch-model.sh
+app/src/main/assets/model-en-us/
