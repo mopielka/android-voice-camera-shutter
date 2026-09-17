@@ -3,7 +3,7 @@ package dev.opielka.voiceshutter.debug
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import dev.opielka.voiceshutter.DiagnosticLog
 import dev.opielka.voiceshutter.ShutterAccessibilityService
 
 /**
@@ -15,11 +15,12 @@ import dev.opielka.voiceshutter.ShutterAccessibilityService
 class TestShutterReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context?, intent: Intent?) {
+        context?.let(DiagnosticLog::init)
         val service = ShutterAccessibilityService.instance
         if (service == null) {
-            Log.w("VoiceShutter", "Usługa dostępności nie działa")
+            DiagnosticLog.log("TEST_SHUTTER: instancja usługi dostępności jest null")
             return
         }
-        Log.i("VoiceShutter", "Wyzwolenie testowe => ${service.triggerShutter()}")
+        DiagnosticLog.log("TEST_SHUTTER => ${service.triggerShutter()}")
     }
 }

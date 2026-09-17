@@ -24,4 +24,9 @@ mkdir -p "$(dirname "${TARGET}")"
 rm -rf "${TARGET}"
 mv "${TMP}/${MODEL_NAME}" "${TARGET}"
 
+# Vosk's StorageService.unpack compares a `uuid` marker to decide whether the model
+# already sits unpacked in filesDir. The published archives omit it, and without it
+# unpack fails with FileNotFoundException before the engine ever starts.
+uuidgen > "${TARGET}/uuid"
+
 echo "Model rozpakowany do ${TARGET}"

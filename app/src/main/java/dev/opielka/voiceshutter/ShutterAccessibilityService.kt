@@ -3,8 +3,9 @@ package dev.opielka.voiceshutter
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import kotlinx.coroutines.CoroutineScope
@@ -35,9 +36,15 @@ class ShutterAccessibilityService : AccessibilityService() {
     @Volatile private var rememberedIds: Map<String, String> = emptyMap()
     @Volatile private var activeCameraPackage: String? = null
     @Volatile private var lastTriggerAt = 0L
+    @Volatile private var lastSeenPackage: String? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val stopListening = Runnable { stopNow() }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        DiagnosticLog.init(applicationContext)
+        DiagnosticLog.log("Usługa dostępności podłączona")
         prefs = Prefs(applicationContext)
         registry = CameraAppRegistry(applicationContext)
         instance = this
@@ -45,13 +52,14 @@ class ShutterAccessibilityService : AccessibilityService() {
         scope.launch {
             prefs.enabled.collectLatest { value ->
                 enabled = value
-                if (!value) leaveCamera()
+                DiagnosticLog.log("Nasłuch włączony: $value")
+                if (!value) mainHandler.post { stopNow() }
             }
         }
         scope.launch {
             prefs.cameraPackageOverrides.collectLatest { overrides ->
                 cameraPackages = registry.effectiveCameraPackages(overrides)
-                Log.i(TAG, "Pakiety aparatu: $cameraPackages")
+                DiagnosticLog.log("Pakiety aparatu: $cameraPackages")
             }
         }
     }
@@ -61,22 +69,31 @@ class ShutterAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         if (packageName == this.packageName) return
 
+        if (packageName != lastSeenPackage) {
+            lastSeenPackage = packageName
+            DiagnosticLog.log(
+                "Okno: $packageName (enabled=$enabled, aparat=${packageName in cameraPackages})",
+            )
+        }
+
         if (enabled && packageName in cameraPackages) enterCamera(packageName) else leaveCamera()
     }
 
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        leaveCamera()
+        mainHandler.removeCallbacks(stopListening)
+        stopNow()
         instance = null
         scope.cancel()
         super.onDestroy()
     }
 
     private fun enterCamera(packageName: String) {
+        mainHandler.removeCallbacks(stopListening)
         if (activeCameraPackage == packageName) return
         activeCameraPackage = packageName
-        Log.i(TAG, "Aparat na pierwszym planie: $packageName — startuję nasłuch")
+        DiagnosticLog.log("Aparat na pierwszym planie: $packageName — startuję nasłuch")
         scope.launch {
             prefs.shutterViewId(packageName).collectLatest { viewId ->
                 rememberedIds = viewId
@@ -87,9 +104,21 @@ class ShutterAccessibilityService : AccessibilityService() {
         VoiceShutterService.start(this)
     }
 
+    /**
+     * Deferred, because the camera does not leave the foreground cleanly: MagicOS flashes
+     * its own windows (systemui, launcher, AOD) over it for a fraction of a second, and
+     * tearing the recogniser down and back up on each flash is what made it stop
+     * responding after a few shots.
+     */
     private fun leaveCamera() {
         if (activeCameraPackage == null) return
-        Log.i(TAG, "Aparat zamknięty — zatrzymuję nasłuch")
+        mainHandler.removeCallbacks(stopListening)
+        mainHandler.postDelayed(stopListening, LINGER_MS)
+    }
+
+    private fun stopNow() {
+        if (activeCameraPackage == null) return
+        DiagnosticLog.log("Aparat zamknięty — zatrzymuję nasłuch")
         activeCameraPackage = null
         VoiceShutterService.stop(this)
     }
@@ -101,35 +130,39 @@ class ShutterAccessibilityService : AccessibilityService() {
     fun triggerShutter(): Boolean {
         val now = SystemClock.elapsedRealtime()
         if (now - lastTriggerAt < DEBOUNCE_MS) {
-            Log.d(TAG, "Wyzwolenie pominięte (debounce)")
+            DiagnosticLog.log("Wyzwolenie pominięte (debounce)")
             return false
         }
         lastTriggerAt = now
 
         val packageName = activeCameraPackage ?: run {
-            Log.w(TAG, "Brak aparatu na pierwszym planie")
+            DiagnosticLog.log("Brak aparatu na pierwszym planie")
             return false
         }
         val root: AccessibilityNodeInfo = rootInActiveWindow ?: run {
-            Log.w(TAG, "Brak drzewa aktywnego okna")
+            DiagnosticLog.log("Brak drzewa aktywnego okna")
             return false
         }
 
         return when (val target = locator.locate(root, rememberedIds[packageName])) {
             is ShutterTarget.Clickable -> {
                 val clicked = target.node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                Log.i(TAG, "Kliknięcie spustu (${target.viewId}) => $clicked")
+                DiagnosticLog.log(
+                    "Kliknięcie spustu => $clicked " +
+                        "(id=${target.viewId}, węzeł=${target.node.viewIdResourceName}, " +
+                        "desc=${target.node.contentDescription})",
+                )
                 if (clicked) remember(packageName, target.viewId)
                 clicked
             }
 
             is ShutterTarget.Coordinates -> {
-                Log.i(TAG, "Spust nieklikalny — dotknięcie ${target.x}x${target.y}")
+                DiagnosticLog.log("Spust nieklikalny — dotknięcie ${target.x}x${target.y}")
                 tap(target.x, target.y).also { if (it) remember(packageName, target.viewId) }
             }
 
             ShutterTarget.NotFound -> {
-                Log.w(TAG, "Nie znaleziono spustu w $packageName")
+                DiagnosticLog.log("Nie znaleziono spustu w $packageName")
                 prefs.forgetLater(packageName)
                 false
             }
@@ -154,8 +187,8 @@ class ShutterAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val TAG = "VoiceShutter"
         private const val DEBOUNCE_MS = 2_000L
+        private const val LINGER_MS = 4_000L
         private const val TAP_DURATION_MS = 60L
 
         @Volatile

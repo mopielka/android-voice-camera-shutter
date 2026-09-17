@@ -1,7 +1,6 @@
 package dev.opielka.voiceshutter
 
 import android.content.Context
-import android.util.Log
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -21,34 +20,43 @@ class VoskDetector(
     private val keyword: String = "smile",
 ) : WakeWordDetector {
 
-    private var model: Model? = null
     private var speechService: SpeechService? = null
 
     override fun start(onDetected: () -> Unit) {
         if (speechService != null) return
+
+        sharedModel?.let {
+            beginListening(it, onDetected)
+            return
+        }
 
         StorageService.unpack(
             context,
             MODEL_ASSET,
             MODEL_TARGET,
             { unpacked ->
-                model = unpacked
+                sharedModel = unpacked
                 beginListening(unpacked, onDetected)
             },
-            { error -> Log.e(TAG, "Nie udało się rozpakować modelu", error) },
+            { error -> DiagnosticLog.log("Nie udało się rozpakować modelu", error) },
         )
     }
 
     private fun beginListening(model: Model, onDetected: () -> Unit) {
         runCatching {
-            val grammar = """["$keyword", "[unk]"]"""
-            val recognizer = Recognizer(model, SAMPLE_RATE, grammar)
+            val recognizer = Recognizer(model, SAMPLE_RATE, """["$keyword", "[unk]"]""")
+            val listener = KeywordListener(keyword) {
+                // Without this the partial hypothesis keeps containing the keyword and
+                // fires again on every audio chunk until the debounce window closes.
+                recognizer.reset()
+                onDetected()
+            }
             SpeechService(recognizer, SAMPLE_RATE).also { service ->
                 speechService = service
-                service.startListening(KeywordListener(keyword, onDetected))
-                Log.i(TAG, "Nasłuch uruchomiony, słowo: $keyword")
+                service.startListening(listener)
+                DiagnosticLog.log("Nasłuch uruchomiony, słowo: $keyword")
             }
-        }.onFailure { Log.e(TAG, "Nie udało się uruchomić nasłuchu", it) }
+        }.onFailure { DiagnosticLog.log("Nie udało się uruchomić nasłuchu", it) }
     }
 
     override fun stop() {
@@ -57,9 +65,10 @@ class VoskDetector(
             shutdown()
         }
         speechService = null
-        model?.close()
-        model = null
-        Log.i(TAG, "Nasłuch zatrzymany")
+        // The model is deliberately not closed: unpacking it costs ~68 MB of I/O, and the
+        // camera flips in and out of the foreground often enough that reloading it each
+        // time is what makes the engine stop responding.
+        DiagnosticLog.log("Nasłuch zatrzymany")
     }
 
     private class KeywordListener(
@@ -78,7 +87,7 @@ class VoskDetector(
         override fun onFinalResult(hypothesis: String?) = Unit
 
         override fun onError(exception: Exception?) {
-            Log.e(TAG, "Błąd rozpoznawania", exception)
+            DiagnosticLog.log("Błąd rozpoznawania", exception)
         }
 
         override fun onTimeout() = Unit
@@ -91,9 +100,12 @@ class VoskDetector(
     }
 
     private companion object {
-        const val TAG = "VoiceShutter"
         const val SAMPLE_RATE = 16_000f
         const val MODEL_ASSET = "model-en-us"
         const val MODEL_TARGET = "model"
+
+        /** Outlives individual listening sessions; see the note in [stop]. */
+        @Volatile
+        var sharedModel: Model? = null
     }
 }

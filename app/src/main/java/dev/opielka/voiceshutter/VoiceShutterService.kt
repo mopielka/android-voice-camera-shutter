@@ -9,7 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
-import android.util.Log
 
 /**
  * Owns the microphone for as long as a camera app is in the foreground.
@@ -25,6 +24,8 @@ class VoiceShutterService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        DiagnosticLog.init(applicationContext)
+        DiagnosticLog.log("VoiceShutterService utworzony")
         createNotificationChannel()
     }
 
@@ -88,7 +89,6 @@ class VoiceShutterService : Service() {
     }
 
     companion object {
-        private const val TAG = "VoiceShutter"
         private const val CHANNEL_ID = "voice_shutter_listening"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "dev.opielka.voiceshutter.STOP"
@@ -102,7 +102,7 @@ class VoiceShutterService : Service() {
             val intent = Intent(context, VoiceShutterService::class.java)
             runCatching { context.startForegroundService(intent) }
                 .onFailure {
-                    Log.e(TAG, "Nie udało się wystartować nasłuchu — sprawdź wyjątek od optymalizacji baterii", it)
+                    DiagnosticLog.log("Nie udało się wystartować nasłuchu — sprawdź wyjątek od optymalizacji baterii", it)
                 }
         }
 
