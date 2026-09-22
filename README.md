@@ -170,10 +170,25 @@ Gdyby i to zawiodło, przy otwartym aparacie:
 
 Skrypt zrzuca drzewo UI i wypisuje kandydatów na spust.
 
+## Nagrywanie wideo
+
+Trzymanie mikrofonu nie psuje dźwięku w nagraniu — sprawia, że aparat **w ogóle nie zaczyna
+nagrywać**. Dlatego aplikacja oddaje mikrofon, gdy tylko wykryje tryb wideo, i odbiera go po
+powrocie do zdjęć. Wyzwalanie głosem w trybie wideo nie działa i działać nie może.
+
+Tryb rozpoznawany jest po opisach dostępności (`WybranoWideo`, `Nagraj wideo`, `Wstrzymaj
+nagrywanie wideo`), bo ten ROM nie udostępnia identyfikatorów widoków. Dwie pułapki, na które
+trzeba uważać przy zmianach:
+
+- **Sam przycisk migawki niczego nie dowodzi** — Honor pozwala robić zdjęcia w trakcie
+  nagrywania, więc przycisk „zrób zdjęcie" jest obecny także wtedy. O trybie świadczy wyłącznie
+  zakładka (`Wybrano…`).
+- **Podczas nagrywania zakładki znikają** i nic nie nazywa trybu. Ten stan jest traktowany jako
+  „nie wiem" i zostawia bieżące ustawienie — potraktowanie go jako powrotu do zdjęć odbierało
+  mikrofon w trakcie nagrywania i ucinało plik.
+
 ## Ograniczenia
 
-- Sterowanie głosem **podczas nagrywania wideo** najpewniej nie zadziała — aplikacja aparatu
-  przejmuje mikrofon na wyłączność.
 - Praca z **zablokowanego ekranu** jest niepewna — usługa dostępności może nie widzieć okna
   nad lockscreenem.
 - Hasła muszą być **angielskie** — dołączony model to `vosk-model-small-en-us`. Vosk przyjmie

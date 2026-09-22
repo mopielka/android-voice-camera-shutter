@@ -38,6 +38,8 @@ class ShutterAccessibilityService : AccessibilityService() {
     @Volatile private var lastTriggerAt = 0L
     @Volatile private var shutterDelayMs = ShutterDelay.DEFAULT_MS
     @Volatile private var lastSeenPackage: String? = null
+    @Volatile private var pausedForVideo = false
+    @Volatile private var lastModeCheckAt = 0L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val stopListening = Runnable { stopNow() }
@@ -61,6 +63,10 @@ class ShutterAccessibilityService : AccessibilityService() {
         scope.launch {
             prefs.shutterDelayMs.collectLatest { shutterDelayMs = it }
         }
+        // A window-state event only arrives on a change. Restarting the service while the
+        // camera is already open would otherwise leave it unnoticed until the user
+        // switched away and back.
+        mainHandler.postDelayed({ adoptForegroundCamera() }, ADOPT_DELAY_MS)
         scope.launch {
             prefs.cameraPackageOverrides.collectLatest { overrides ->
                 cameraPackages = registry.effectiveCameraPackages(overrides)
@@ -70,9 +76,15 @@ class ShutterAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        event ?: return
         val packageName = event.packageName?.toString() ?: return
         if (packageName == this.packageName) return
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            if (packageName == activeCameraPackage) followCameraMode()
+            return
+        }
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val isCamera = packageName in cameraPackages
         if (isCamera && !enabled && packageName != lastSeenPackage) {
@@ -106,7 +118,61 @@ class ShutterAccessibilityService : AccessibilityService() {
                     ?: rememberedIds - packageName
             }
         }
-        VoiceShutterService.start(this)
+        // Checked before starting: the service comes up asynchronously, so a pause sent
+        // straight afterwards would arrive before there was anything to pause, and the
+        // microphone would be taken from a recording already in progress.
+        pausedForVideo = CameraMode.of(rootInActiveWindow) == CameraShootingMode.VIDEO
+        if (pausedForVideo) {
+            DiagnosticLog.log("Aparat otwarty w trybie wideo — nie zajmuję mikrofonu")
+        } else {
+            VoiceShutterService.start(this)
+        }
+    }
+
+    /**
+     * Holding the microphone does not merely spoil a video's audio — the camera refuses
+     * to start recording at all. So the microphone is handed back as soon as the user
+     * switches to a video mode, before they reach for the record button, and taken again
+     * when they return to stills.
+     *
+     * Content-changed events arrive constantly from a live camera preview, hence the
+     * throttle: walking the window tree on each one would be wasteful.
+     */
+    private fun adoptForegroundCamera() {
+        if (!enabled || activeCameraPackage != null) return
+        val current = rootInActiveWindow?.packageName?.toString() ?: return
+        if (current in cameraPackages) {
+            DiagnosticLog.log("Aparat był już otwarty przy starcie usługi")
+            enterCamera(current)
+        }
+    }
+
+    private fun followCameraMode(force: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastModeCheckAt < MODE_CHECK_INTERVAL_MS) return
+        lastModeCheckAt = now
+
+        if (activeCameraPackage == null) return
+
+        val verdict = CameraMode.verdict(rootInActiveWindow)
+        when (verdict.mode) {
+            CameraShootingMode.VIDEO -> if (!pausedForVideo) {
+                pausedForVideo = true
+                DiagnosticLog.log("Tryb wideo — zwalniam mikrofon (wg: ${verdict.evidence})")
+                VoiceShutterService.pause()
+            }
+
+            CameraShootingMode.PHOTO -> if (pausedForVideo) {
+                pausedForVideo = false
+                DiagnosticLog.log("Powrót do zdjęć — wznawiam nasłuch (wg: ${verdict.evidence})")
+                VoiceShutterService.resume(this)
+            }
+
+            // While recording, the mode tabs are gone and nothing names the mode. Acting
+            // on that silence is what grabbed the microphone mid-recording and truncated
+            // the file, so the current state simply stands.
+            CameraShootingMode.UNKNOWN -> Unit
+        }
     }
 
     /**
@@ -136,6 +202,7 @@ class ShutterAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(pressShutterLater)
         DiagnosticLog.log("Aparat zamknięty — zatrzymuję nasłuch")
         activeCameraPackage = null
+        pausedForVideo = false
         VoiceShutterService.stop(this)
     }
 
@@ -235,6 +302,8 @@ class ShutterAccessibilityService : AccessibilityService() {
          */
         private const val DEBOUNCE_MS = 800L
         private const val LINGER_MS = 4_000L
+        private const val MODE_CHECK_INTERVAL_MS = 700L
+        private const val ADOPT_DELAY_MS = 1_500L
         private const val TAP_DURATION_MS = 60L
 
         @Volatile

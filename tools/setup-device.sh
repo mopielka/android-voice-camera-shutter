@@ -42,8 +42,22 @@ fi
 "${ADB}" shell settings put secure accessibility_enabled 1
 
 echo "==> Weryfikacja"
-sleep 2
-if "${ADB}" shell dumpsys accessibility | grep -q "${PKG}"; then
+sleep 3
+# A fresh install leaves the entry in settings but the system does not always bind the
+# service, so checking the settings value (or dumpsys accessibility, which echoes it)
+# reports success while nothing runs. Only a live ServiceRecord proves it.
+running() { "${ADB}" shell dumpsys activity services "${PKG}" 2>/dev/null | grep -q ShutterAccessibilityService; }
+
+if ! running; then
+    echo "    Nie wystartowała — przeładowuję wpis"
+    "${ADB}" shell settings put secure enabled_accessibility_services "${CURRENT}" >/dev/null 2>&1
+    sleep 2
+    "${ADB}" shell settings put secure enabled_accessibility_services "${UPDATED}" >/dev/null 2>&1
+    "${ADB}" shell settings put secure accessibility_enabled 1 >/dev/null 2>&1
+    sleep 3
+fi
+
+if running; then
     echo "    Usługa dostępności działa."
 else
     cat <<'MANUAL'

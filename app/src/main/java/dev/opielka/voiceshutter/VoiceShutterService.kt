@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -31,6 +32,14 @@ class VoiceShutterService : Service() {
     private var detector: WakeWordDetector? = null
     private var listening = false
 
+    /**
+     * Set while the camera is shooting video. The keyword flow builds detectors
+     * asynchronously, so without this a pause could be immediately undone by a detector
+     * that was already on its way — handing the microphone straight back and blocking
+     * the recording again.
+     */
+    @Volatile private var paused = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -38,19 +47,23 @@ class VoiceShutterService : Service() {
         DiagnosticLog.init(applicationContext)
         DiagnosticLog.log("VoiceShutterService utworzony")
         createNotificationChannel()
+        instance = this
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
-
+        // Always first: a service started with startForegroundService() that fails to
+        // call this within a few seconds is killed along with the whole process — which
+        // took the accessibility service down with it.
         startForeground(
             NOTIFICATION_ID,
             buildNotification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
         )
+
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         if (!listening) {
             listening = true
@@ -67,13 +80,39 @@ class VoiceShutterService : Service() {
             .distinctUntilChanged()
             .collectLatest { phrases ->
                 detector?.stop()
-                detector = VoskDetector(applicationContext, phrases).also { engine ->
-                    engine.start { ShutterAccessibilityService.instance?.triggerShutter() }
-                }
+                detector = if (paused) null else newDetector(phrases)
             }
     }
 
+    private suspend fun restartDetector() {
+        if (paused) return
+        detector = newDetector(KeywordList.parseOrDefault(prefs.keywordsRaw.first()))
+    }
+
+    private fun newDetector(phrases: List<String>): WakeWordDetector =
+        VoskDetector(applicationContext, phrases).also { engine ->
+            engine.start { ShutterAccessibilityService.instance?.triggerShutter() }
+        }
+
+    /**
+     * Hands the microphone to the camera app for video without tearing the service down.
+     * Called directly rather than through an intent: re-entering startForegroundService
+     * with a microphone type is refused while the app sits in the background, because
+     * RECORD_AUDIO is a foreground-only permission — and the refusal crashes the process.
+     */
+    fun pauseListening() {
+        paused = true
+        detector?.stop()
+        detector = null
+    }
+
+    fun resumeListening() {
+        paused = false
+        if (detector == null && listening) scope.launch { restartDetector() }
+    }
+
     override fun onDestroy() {
+        instance = null
         scope.cancel()
         detector?.stop()
         detector = null
@@ -133,6 +172,20 @@ class VoiceShutterService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, VoiceShutterService::class.java))
+        }
+
+        @Volatile
+        private var instance: VoiceShutterService? = null
+
+        /** Releases the microphone but keeps the service alive. */
+        fun pause() {
+            instance?.pauseListening()
+        }
+
+        /** Resumes a running service, or starts one if the camera opened straight into video. */
+        fun resume(context: Context) {
+            val running = instance
+            if (running != null) running.resumeListening() else start(context)
         }
     }
 }
